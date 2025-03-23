@@ -3,9 +3,10 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 from utils.utils import image_transform, prepare_dataloader
-from config.train_model_config import BATCH_SIZE, LR_INIT
+from config.train_model_config import BATCH_SIZE, LR_INIT, get_unet_config
 from data.data_loader import DareDataset
 import os
+from model.openai_model import UNetModel
 import torch
 from model.ldm import LDM
 from trainer import Trainer
@@ -30,8 +31,8 @@ def main(rank, world_size):
 
     train_loader = prepare_dataloader(train_dataset, BATCH_SIZE)
     val_loader = prepare_dataloader(val_dataset, BATCH_SIZE)
-    model = LDM()
-    optimizer = torch.optim.Adam(model.unet.parameters(), lr=LR_INIT)
+    model = UNetModel(**get_unet_config())
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR_INIT)
     trainer = Trainer(model=model, optimizer=optimizer, train_loader=train_loader, val_loader=val_loader, gpu_id=rank)
     trainer.start_training()
     destroy_process_group()

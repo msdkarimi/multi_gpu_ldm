@@ -1,7 +1,9 @@
 import torch
-from config.train_model_config import NUM_ITER, LR_INIT
+from config.train_model_config import NUM_ITER, LR_INIT, get_diffusion_config, get_first_stage_config
 from itertools import cycle
 from torch.nn.parallel import DistributedDataParallel as DDP
+from model.autoencoder import AutoencoderKL
+from model.diffusion import GaussianDiffusion
 
 
 class Trainer:
@@ -9,6 +11,9 @@ class Trainer:
 
         self.gpu_id = gpu_id
         self.optimizer = optimizer
+
+        self.vae = AutoencoderKL(**get_first_stage_config()).to(gpu_id)
+        self.diffusion = GaussianDiffusion(**get_diffusion_config()).to(gpu_id)
         self.model = model.to(gpu_id)
         self.model = DDP(model, device_ids=[gpu_id])
         self.train_loader = train_loader
@@ -27,14 +32,20 @@ class Trainer:
         while self.step < self.lr_anneal_steps:
             batch = next(data_iterator)
             x = batch['image'].to(self.gpu_id)
+            # -----------------
+            z = 0.18215 * self.vae.encode(x).sample().detach()
+            noise = torch.randn_like(z)
+            t = torch.randint(0, self.diffusion.num_timesteps, (z.shape[0],), device=z.device).long()
+            z_noisy = self.diffusion.q_sample(x_start=z, t=t, noise=noise)
+            # ----------------
             caption = None # batch['caption']
-            loss = self._run_batch(batch, caption)
+            loss = self._run_batch(z_noisy, t, context=caption)
             print(f'gpu_id: {self.gpu_id}, step: {self.step}, loss: {loss} lr: {self.optimizer.param_groups[0]["lr"]}' )
             self.step += 1
 
-    def _run_batch(self, x, c=None):
+    def _run_batch(self, z_noisy, t, context=None):
         self.optimizer.zero_grad()
-        pred, target = self.model(x)
+        pred, target = self.model(z_noisy, t, context)
         loss = self.compute_loss(pred, target)
         self.backpropagation(loss)
         return loss.item()

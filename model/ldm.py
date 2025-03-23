@@ -1,28 +1,22 @@
 import torch
 import torch.nn as nn
-from openai_model import UNetModel
-from autoencoder import AutoencoderKL
-from diffusion import GaussianDiffusion
+from model.openai_model import UNetModel
+from model.autoencoder import AutoencoderKL
+from model.diffusion import GaussianDiffusion
 from config.train_model_config import get_first_stage_config, get_diffusion_config, get_unet_config, LR_INIT, NUM_ITER
 
 
 
 class LDM(nn.Module):
     def __init__(self, ):
+        super().__init__()
         self.unet = UNetModel(**get_unet_config())
         self.vae = AutoencoderKL(**get_first_stage_config())
         self.diffusion = GaussianDiffusion(**get_diffusion_config())
         self.conditioner = None
         self.scale_factor = 0.18215
-        super().__init__()
 
-    def forward(self, x):
-        prediction, target = self._forward(x)
-        loss = self.compute_loss(prediction, target)
-        self.backpropagation(loss)
-        self.anneal_lr()
-
-    def _forward(self, x):
+    def forward(self, x, caption=None):
         z = self.get_latent(x)
         noise = torch.randn_like(z)
         t = torch.randint(0, self.diffusion.num_timesteps, (z.shape[0],), device=z.device).long()
