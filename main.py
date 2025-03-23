@@ -26,8 +26,8 @@ def ddp_setup(rank, world_size):
 
 def main(rank, world_size):
     ddp_setup(rank, world_size)
-    train_dataset = DareDataset('data', 'train', transform=image_transform)
-    val_dataset = DareDataset('data', 'validation', transform=image_transform)
+    train_dataset = DareDataset('/home/dare/ddpm/DDP-model-for-generating-conditional-images/data', 'train', transform=image_transform)
+    val_dataset = DareDataset('/home/dare/ddpm/DDP-model-for-generating-conditional-images/data', 'validation', transform=image_transform)
 
     train_loader = prepare_dataloader(train_dataset, BATCH_SIZE)
     val_loader = prepare_dataloader(val_dataset, BATCH_SIZE)
