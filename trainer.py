@@ -39,13 +39,13 @@ class Trainer:
             z_noisy = self.diffusion.q_sample(x_start=z, t=t, noise=noise)
             # ----------------
             caption = None # batch['caption']
-            loss = self._run_batch(z_noisy, t, context=caption)
+            loss = self._run_batch(z_noisy, t, target=noise, context=caption)
             print(f'gpu_id: {self.gpu_id}, step: {self.step}, loss: {loss} lr: {self.optimizer.param_groups[0]["lr"]}' )
             self.step += 1
 
-    def _run_batch(self, z_noisy, t, context=None):
+    def _run_batch(self, z_noisy, t, target, context=None):
         self.optimizer.zero_grad()
-        pred, target = self.model(z_noisy, t, context)
+        pred = self.model(z_noisy, t, context)
         loss = self.compute_loss(pred, target)
         self.backpropagation(loss)
         return loss.item()
