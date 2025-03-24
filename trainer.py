@@ -1,3 +1,4 @@
+import os
 import torch
 from config.train_model_config import NUM_ITER, LR_INIT, get_diffusion_config, get_first_stage_config
 from itertools import cycle
@@ -59,19 +60,29 @@ class Trainer:
 
 
     def do_log(self):
+        # _loss = self._reduce(torch.tensor(self.loss.avg).cuda())
+        # _grad_norm = self._reduce(torch.tensor(self.grad_norm.avg).cuda())
+        # _param_norm = self._reduce(torch.tensor(self.param_norm.avg).cuda())
         if self.gpu_id == 0 and self.step % 10 == 0:
-            _loss = self._reduce(self.loss.avg)
-            _grad_norm = self._reduce(self.grad_norm.avg)
-            _param_norm = self._reduce(self.param_norm.avg)
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 ** 3)
+            _loss = self.loss.avg
+            _grad_norm = self.grad_norm
+            _param_norm = self.param_norm
+
             _log = (
-                f'step: {self.step}'
-                f'loss: {_loss:.4e}'
-                f'grad_norm: {_grad_norm:.4e}'
-                f'param_norm: {_param_norm:.4e}'
+                f'step: {self.step}\t'
+                f'loss: {_loss:.4e}\t'
+                f'grad_norm: {_grad_norm:.4e}\t'
+                f'param_norm: {_param_norm:.4e}\t'
                 f'memory_use: {memory_used:.2f}GB'
             )
             print(_log)
+        if self.gpu_id == 0 and self.step % 2000 == 0:
+            self._save_model()
+
+    def _save_model(self,):
+        os.makedirs('checkpoints', exist_ok=True)
+        torch.save(self.model.module.state_dict(), f'checkpoints/{self.step}.pt')
 
     def get_t_noizyz(self, z):
         noise = torch.randn_like(z)
