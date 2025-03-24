@@ -1,6 +1,6 @@
 from ml_collections import ConfigDict
 # __all__ = ['get_all_config', 'get_config_trainer']
-BATCH_SIZE = 1
+BATCH_SIZE = 3
 LR_INIT = 1e-4
 NUM_ITER = 5e5
 

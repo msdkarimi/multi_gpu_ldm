@@ -5,6 +5,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from model.autoencoder import AutoencoderKL
 from model.diffusion import GaussianDiffusion
 from utils.utils import AverageMeter, compute_grad_param_norms
+import torch.distributed as dist
 
 
 class Trainer:
@@ -19,12 +20,14 @@ class Trainer:
         self.model = DDP(model, device_ids=[gpu_id])
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.steps_per_epoch = len(self.train_loader)
         self.lr_anneal_steps = NUM_ITER
         self.step = 0
         self.resume_step = 0
         self.scale_factor = 0.18215
         self.lr = LR_INIT
 
+        self.logger = None
         self.loss = AverageMeter()
         self.grad_norm = AverageMeter()
         self.param_norm = AverageMeter()
@@ -33,10 +36,15 @@ class Trainer:
         self._run()
 
     def _run(self):
-        self.train_loader.sampler.set_epoch(self.step)
+        _epoch = 0
         data_iterator = cycle(self.train_loader)
         self.model.train()
         while self.step < self.lr_anneal_steps:
+            if self.step % self.steps_per_epoch == 0:
+                _epoch += 1
+                self.train_loader.sampler.set_epoch(_epoch)
+
+
             batch = next(data_iterator)
             x = batch['image'].to(self.gpu_id)
             # -----------------
@@ -45,16 +53,25 @@ class Trainer:
             # ----------------
             caption = None # batch['caption']
             self._run_batch(z_noisy, t, target=target, context=caption)
+            self.do_log()
             self.step += 1
-            if self.step % len(self.train_loader) == 0:
-                self.train_loader.sampler.set_epoch(self.step)
-            if self.gpu_id == 0 and self.step % 100 == 0:
-                memory_used = torch.cuda.max_memory_allocated() / (1024.0 ** 3)
-                print(f'step: {self.step}'
-                      f'loss: {self.loss.avg:.4e}'
-                      f'grad_norm: {self.grad_norm.avg:.4e}'
-                      f'pram: {self.param_norm.avg:.4e}'
-                      f'memory_use: {memory_used:.2f}GB')
+
+
+
+    def do_log(self):
+        if self.gpu_id == 0 and self.step % 10 == 0:
+            _loss = self._reduce(self.loss.avg)
+            _grad_norm = self._reduce(self.grad_norm.avg)
+            _param_norm = self._reduce(self.param_norm.avg)
+            memory_used = torch.cuda.max_memory_allocated() / (1024.0 ** 3)
+            _log = (
+                f'step: {self.step}'
+                f'loss: {_loss:.4e}'
+                f'grad_norm: {_grad_norm:.4e}'
+                f'param_norm: {_param_norm:.4e}'
+                f'memory_use: {memory_used:.2f}GB'
+            )
+            print(_log)
 
     def get_t_noizyz(self, z):
         noise = torch.randn_like(z)
@@ -108,3 +125,8 @@ class Trainer:
         lr = self.lr * (1 - frac_done)
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
+    @staticmethod
+    def _reduce(metric):
+        dist.all_reduce(metric, op=dist.ReduceOp.SUM)
+        metric /= dist.get_world_size()
+        return metric

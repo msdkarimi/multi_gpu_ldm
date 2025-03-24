@@ -22,6 +22,7 @@ def ddp_setup(rank, world_size):
     os.environ["MASTER_PORT"] = "12355"
     torch.cuda.set_device(rank)
     init_process_group(backend="nccl", rank=rank, world_size=world_size)
+    # init_process_group(backend="gloo", rank=rank, world_size=world_size)
 
 
 def main(rank, world_size):
